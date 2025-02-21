@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Local File Transfer</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .container { border: 1px solid #ccc; padding: 20px; border-radius: 5px; }
+        .status { margin-top: 20px; padding: 10px; background: #f0f0f0; }
+        #file-list { margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Local File Transfer</h1>
+        
+        <!-- Connection Section -->
+        <div>
+            <h3>Your ID: <span id="peer-id"></span></h3>
+            <input type="text" id="remote-id" placeholder="Enter peer ID">
+            <button onclick="connectToPeer()">Connect</button>
+        </div>
+
+        <!-- File Transfer Section -->
+        <div>
+            <h3>Send Files</h3>
+            <input type="file" id="file-input" multiple>
+            <button onclick="sendFiles()">Send Selected Files</button>
+            <div id="file-list"></div>
+        </div>
+
+        <!-- Status Section -->
+        <div class="status" id="status">
+            Status: Not connected
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <script>
+        let peer;
+        let conn;
+        
+        // Initialize Peer
+        function initializePeer() {
+            peer = new Peer({
+                host: '0.peerjs.com',
+                port: 443,
+                path: '/',
+                pingInterval: 5000
+            });
+
+            peer.on('open', (id) => {
+                document.getElementById('peer-id').textContent = id;
+            });
+
+            peer.on('connection', (connection) => {
+                conn = connection;
+                setupConnection();
+            });
+        }
+
+        // Connect to another peer
+        function connectToPeer() {
+            const remoteId = document.getElementById('remote-id').value;
+            conn = peer.connect(remoteId);
+            setupConnection();
+        }
+
+        // Set up connection handlers
+        function setupConnection() {
+            conn.on('open', () => {
+                updateStatus(`Connected to ${conn.peer}`);
+            });
+
+            conn.on('data', (data) => {
+                if (data.type === 'file') {
+                    receiveFile(data);
+                }
+            });
+        }
+
+        // Handle file sending
+        async function sendFiles() {
+            const files = document.getElementById('file-input').files;
+            if (!files.length) return;
+
+            for (const file of files) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    conn.send({
+                        type: 'file',
+                        name: file.name,
+                        data: e.target.result,
+                        size: file.size
+                    });
+                };
+                reader.readAsArrayBuffer(file);
+            }
+            updateStatus(`Sending ${files.length} files...`);
+        }
+
+        // Handle received files
+        function receiveFile(data) {
+            const blob = new Blob([data.data], {type: 'application/octet-stream'});
+            const url = URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = data.name;
+            link.textContent = `Download ${data.name} (${formatSize(data.size)})`;
+            
+            const fileList = document.getElementById('file-list');
+            fileList.appendChild(link);
+            fileList.appendChild(document.createElement('br'));
+            
+            updateStatus(`Received ${data.name}`);
+        }
+
+        // Helper functions
+        function updateStatus(text) {
+            document.getElementById('status').textContent = `Status: ${text}`;
+        }
+
+        function formatSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Initialize when page loads
+        window.onload = initializePeer;
+    </script>
+</body>
+</html>
